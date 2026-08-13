@@ -303,6 +303,83 @@ export default function App() {
     };
   }, [playerName, playerColor]);
 
+  // Synchronize Speed and Pause/Play with Go Server
+  useEffect(() => {
+    if (isConnected) {
+      if (isRunning) {
+        const intervalMs = Math.max(10, Math.round(50 / speed));
+        gameWs.sendAdminSetSpeed(intervalMs);
+      } else {
+        // Paused state
+        gameWs.sendAdminSetSpeed(9999999);
+      }
+    }
+  }, [isConnected, isRunning, speed]);
+
+  // Local physics simulation fallback when disconnected from server
+  useEffect(() => {
+    if (isConnected) return;
+    if (!isRunning) return;
+
+    const intervalMs = Math.max(20, Math.round(50 / speed));
+    const timer = setInterval(() => {
+      setCreatures((prevCreatures) => {
+        return prevCreatures.map((c) => {
+          const nextMuscleStep = (c.muscleStep || 0) + 1;
+          const forces = calculatePhysicsForces(c.elements, nextMuscleStep);
+
+          let targetAngle = c.targetAngleDeg ?? c.angleDeg;
+          if (Math.abs(forces.netRotationDeg) > 0.001) {
+            targetAngle = (targetAngle + forces.netRotationDeg + 360) % 360;
+          }
+
+          let angleDiff = targetAngle - c.angleDeg;
+          while (angleDiff > 180) angleDiff -= 360;
+          while (angleDiff < -180) angleDiff += 360;
+
+          const turnRate = Math.max(2.0, Math.min(15.0, 5.0 + Math.abs(forces.netRotationDeg) * 0.15));
+          let nextAngle = c.angleDeg;
+          if (Math.abs(angleDiff) > turnRate) {
+            nextAngle += angleDiff > 0 ? turnRate : -turnRate;
+          } else {
+            nextAngle = targetAngle;
+          }
+          nextAngle = (nextAngle + 360) % 360;
+
+          const rad = (nextAngle * Math.PI) / 180;
+          const dx = Math.cos(rad);
+          const dy = Math.sin(rad);
+          const spd = (forces.forwardSpeed || 0.08) * (c.state === 'dashing' ? 1.6 : 1.0);
+
+          let nextX = c.x + dx * spd;
+          let nextY = c.y + dy * spd;
+
+          const halfW = worldRadius;
+          const fullW = worldRadius * 2;
+          if (nextX > halfW) nextX -= fullW;
+          if (nextX < -halfW) nextX += fullW;
+          if (nextY > halfW) nextY -= fullW;
+          if (nextY < -halfW) nextY += fullW;
+
+          return {
+            ...c,
+            x: nextX,
+            y: nextY,
+            angleDeg: nextAngle,
+            targetAngleDeg: targetAngle,
+            muscleStep: nextMuscleStep,
+            forces,
+            prevX: c.x,
+            prevY: c.y,
+            prevAngleDeg: c.angleDeg,
+          };
+        });
+      });
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [isConnected, isRunning, speed, worldRadius]);
+
   // Handle Steering Keyboard Controls (A/D / Arrows Left/Right)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

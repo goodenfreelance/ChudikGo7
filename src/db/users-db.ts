@@ -102,7 +102,7 @@ export class UsersDatabase {
       const salt = bcrypt.genSaltSync(10);
       const hash = bcrypt.hashSync('PinokiO', salt);
       database.prepare(
-        'INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, datetime("now"))'
+        'INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, datetime(\'now\'))'
       ).run('usr_admin_joni', 'joni', hash);
       console.log('[SQLite DB] Admin user "joni" (PinokiO) successfully initialized.');
     }

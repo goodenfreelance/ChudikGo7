@@ -320,7 +320,7 @@ export const CreatureEditor: React.FC<CreatureEditorProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[95vh]">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[95vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
           <div className="flex items-center gap-3">
@@ -364,7 +364,7 @@ export const CreatureEditor: React.FC<CreatureEditorProps> = ({
               <label className="block text-2xs font-bold text-slate-400 uppercase tracking-widest mb-2">
                 Выбор инструмента:
               </label>
-              <div className="grid grid-cols-1 gap-1.5 max-h-52 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
                 {ELEMENT_TOOLS.map((tool) => (
                   <button
                     key={tool.type}
@@ -494,66 +494,12 @@ export const CreatureEditor: React.FC<CreatureEditorProps> = ({
             </div>
           </div>
 
-          {/* Right Panel: Interactive Blueprint SVG Canvas & Deletion List */}
-          <div className="md:col-span-7 flex flex-col items-center justify-between bg-slate-950/60 border border-slate-800 rounded-xl p-4">
-            {/* Warning banner if elements are disconnected */}
-            {!connectivity.isConnected && (
-              <div className="w-full bg-red-950/90 border border-red-500/80 rounded-xl p-3 mb-2 text-xs text-red-200 flex items-center gap-2.5 shadow-lg animate-pulse">
-                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
-                <div>
-                  <div className="font-bold text-red-300">Ошибка конструкции: Оторванные элементы!</div>
-                  <div className="text-2xs text-red-200/90 mt-0.5">
-                    {connectivity.disconnectedIds.size === 1
-                      ? '1 деталь находится в воздухе и не связана с телом.'
-                      : `${connectivity.disconnectedIds.size} дет. находятся в воздухе и не связаны с телом.`}
-                    {' Все элементы чудика должны касаться друг друга.'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Real-time Physics Readout Header */}
-            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 mb-2 text-xs space-y-1.5">
-              <div className="flex items-center justify-between font-bold flex-wrap gap-2">
-                <span className="flex items-center gap-1.5 text-indigo-400">
-                  <Scale className="w-4 h-4" />
-                  <span>Масса: {physics.totalMass}</span>
-                </span>
-                <span className="flex items-center gap-1.5 text-emerald-400" title="Зависит от соотношения силы тяги к массе (Thrust / Mass)">
-                  <Zap className="w-4 h-4" />
-                  <span>
-                    Скорость: {physics.forwardSpeed.toFixed(2)} кл/шаг
-                  </span>
-                </span>
-                <span className="flex items-center gap-1.5 text-amber-400" title="Зависит от соотношения крутящего момента к массе (Torque / Mass)">
-                  <span>🔄 Разворот: {Math.abs(physics.netRotationDeg).toFixed(1)}°/шаг</span>
-                </span>
-              </div>
-              <div className="text-2xs text-slate-400 font-mono flex items-center justify-between border-t border-slate-800/80 pt-1.5 flex-wrap gap-1">
-                <span>Плечи: L:{physics.leftMass} / R:{physics.rightMass}</span>
-                <span>Сила мышц: L:{physics.leftTorque} / R:{physics.rightTorque}</span>
-                <span className="text-slate-500 text-3xs">F = m·a (чем выше масса, тем больше нужна сила)</span>
-              </div>
-              {physics.jointsPhysics && physics.jointsPhysics.length > 0 && (
-                <div className="text-3xs text-sky-400 font-mono border-t border-slate-800/60 pt-1 flex flex-wrap gap-2">
-                  {physics.jointsPhysics.map((jp, i) => (
-                    <span key={jp.jointId || i} className="bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800">
-                      ⚙️ Шарнир({jp.jx},{jp.jy}): масса L:{jp.leftEdgeMass} / R:{jp.rightEdgeMass}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Grid Size & Field Expansion Control Bar */}
-            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-2 mb-3 flex flex-wrap items-center justify-between gap-2 text-2xs font-mono">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <span className="font-bold text-slate-400">Размер поля:</span>
-                <span className="px-1.5 py-0.5 bg-indigo-950/80 border border-indigo-500/40 rounded text-indigo-300 font-bold">
-                  {gridRadius * 2 + 1}x{gridRadius * 2 + 1}
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
+          {/* Right Panel: Raised Canvas & Controls Directly Opposite Tool Selector */}
+          <div className="md:col-span-7 flex flex-col items-center bg-slate-950/60 border border-slate-800 rounded-xl p-4 gap-3">
+            {/* Top Toolbar: Compact Grid Size & Clear Button */}
+            <div className="w-full flex items-center justify-between gap-2 bg-slate-900/90 border border-slate-800 rounded-xl p-2 text-2xs font-mono">
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                <span className="font-bold text-slate-400 shrink-0">Поле:</span>
                 {[
                   { r: 2, label: '5x5' },
                   { r: 3, label: '7x7' },
@@ -565,7 +511,7 @@ export const CreatureEditor: React.FC<CreatureEditorProps> = ({
                   <button
                     key={item.r}
                     onClick={() => setGridRadius(item.r)}
-                    className={`px-2 py-0.5 rounded-lg border font-bold transition ${
+                    className={`px-2 py-0.5 rounded-lg border font-bold transition shrink-0 ${
                       gridRadius === item.r
                         ? 'bg-indigo-600 border-indigo-400 text-white shadow-md shadow-indigo-900/40 scale-105'
                         : 'bg-slate-800/90 border-slate-700/80 text-slate-400 hover:text-slate-100 hover:bg-slate-700'
@@ -574,18 +520,20 @@ export const CreatureEditor: React.FC<CreatureEditorProps> = ({
                     {item.label}
                   </button>
                 ))}
-                <button
-                  onClick={() => setGridRadius((r) => Math.min(8, r + 1))}
-                  className="px-2 py-0.5 rounded-lg border bg-indigo-950/60 border-indigo-500/50 text-indigo-300 hover:bg-indigo-900/80 transition font-bold"
-                  title="Расширить поле на 1 круг узлов (+)"
-                >
-                  +
-                </button>
               </div>
+
+              <button
+                onClick={handleClear}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs text-slate-400 hover:text-red-400 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 rounded-lg transition shrink-0"
+                title="Очистить все детали"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Сброс</span>
+              </button>
             </div>
 
-            {/* Interactive Vector Blueprint SVG Canvas with Zoom, Pan, and Expanded Grid Controls */}
-            <div className="relative w-full max-w-sm aspect-square border border-indigo-900/40 rounded-xl bg-slate-900/90 p-1 shadow-inner flex items-center justify-center my-auto overflow-hidden group">
+            {/* Raised Visual Vector Blueprint Canvas (directly opposite tool selector!) */}
+            <div className="relative w-full max-w-md aspect-square border border-indigo-900/40 rounded-xl bg-slate-900/90 p-1 shadow-inner flex items-center justify-center overflow-hidden group">
               {/* Floating Zoom & Pan Controls for Constructor Canvas */}
               <div className="absolute top-3 right-3 z-20 flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 shadow-lg">
                 <button
@@ -1091,6 +1039,46 @@ export const CreatureEditor: React.FC<CreatureEditorProps> = ({
                   </svg>
                 );
               })()}
+            </div>
+
+            {/* Warning banner if elements are disconnected */}
+            {!connectivity.isConnected && (
+              <div className="w-full bg-red-950/90 border border-red-500/80 rounded-xl p-2.5 text-xs text-red-200 flex items-center gap-2.5 shadow-lg animate-pulse">
+                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                <div>
+                  <div className="font-bold text-red-300">Ошибка конструкции: Оторванные элементы!</div>
+                  <div className="text-2xs text-red-200/90 mt-0.5">
+                    {connectivity.disconnectedIds.size === 1
+                      ? '1 деталь находится в воздухе и не связана с телом.'
+                      : `${connectivity.disconnectedIds.size} дет. находятся в воздухе и не связаны с телом.`}
+                    {' Все элементы чудика должны касаться друг друга.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Compact Real-time Physics Readout Card */}
+            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-xs space-y-1">
+              <div className="flex items-center justify-between font-bold flex-wrap gap-2 text-2xs">
+                <span className="flex items-center gap-1 text-indigo-400">
+                  <Scale className="w-3.5 h-3.5" />
+                  <span>Масса: {physics.totalMass}</span>
+                </span>
+                <span className="flex items-center gap-1 text-emerald-400" title="Зависит от соотношения силы тяги к массе (Thrust / Mass)">
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>
+                    Скорость: {physics.forwardSpeed.toFixed(2)} кл/шаг
+                  </span>
+                </span>
+                <span className="flex items-center gap-1 text-amber-400" title="Зависит от соотношения крутящего момента к массе (Torque / Mass)">
+                  <span>🔄 Разворот: {Math.abs(physics.netRotationDeg).toFixed(1)}°/шаг</span>
+                </span>
+              </div>
+              <div className="text-3xs text-slate-400 font-mono flex items-center justify-between border-t border-slate-800/80 pt-1 flex-wrap gap-1">
+                <span>Плечи: L:{physics.leftMass} / R:{physics.rightMass}</span>
+                <span>Сила мышц: L:{physics.leftTorque} / R:{physics.rightTorque}</span>
+                <span className="text-slate-500">F = m·a</span>
+              </div>
             </div>
 
             {/* List of Placed Elements with Individual Controls & Deletion */}

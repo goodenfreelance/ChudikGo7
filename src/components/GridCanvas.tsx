@@ -72,31 +72,25 @@ const GridCanvasComponent: React.FC<GridCanvasProps> = ({
   }, []);
 
   const creaturesRef = useRef(creatures);
-  useEffect(() => { creaturesRef.current = creatures; }, [creatures]);
-
   const foodsRef = useRef(foods);
-  useEffect(() => { foodsRef.current = foods; }, [foods]);
-
   const zoomRef = useRef(zoom);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
-
   const offsetRef = useRef(offset);
-  useEffect(() => { offsetRef.current = offset; }, [offset]);
-
   const gridThemeRef = useRef(gridTheme);
-  useEffect(() => { gridThemeRef.current = gridTheme; }, [gridTheme]);
-
   const showNodesRef = useRef(showNodes);
-  useEffect(() => { showNodesRef.current = showNodes; }, [showNodes]);
-
   const selectedCreatureIdRef = useRef(selectedCreatureId);
-  useEffect(() => { selectedCreatureIdRef.current = selectedCreatureId; }, [selectedCreatureId]);
-
   const pendingPlacementRef = useRef(pendingPlacement);
-  useEffect(() => { pendingPlacementRef.current = pendingPlacement; }, [pendingPlacement]);
-
   const isCameraLockedRef = useRef(isCameraLocked);
-  useEffect(() => { isCameraLockedRef.current = isCameraLocked; }, [isCameraLocked]);
+
+  // Synchronize refs synchronously on every render so requestAnimationFrame always has fresh data
+  creaturesRef.current = creatures;
+  foodsRef.current = foods;
+  zoomRef.current = zoom;
+  offsetRef.current = offset;
+  gridThemeRef.current = gridTheme;
+  showNodesRef.current = showNodes;
+  selectedCreatureIdRef.current = selectedCreatureId;
+  pendingPlacementRef.current = pendingPlacement;
+  isCameraLockedRef.current = isCameraLocked;
 
   const hoverGridPosRef = useRef<Point | null>(null);
 
