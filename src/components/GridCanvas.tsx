@@ -1158,35 +1158,24 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
               <button
                 onClick={() => onTurnPlayer('left')}
                 className="flex-1 py-1.5 px-2 bg-indigo-600/30 hover:bg-indigo-600/60 text-indigo-200 border border-indigo-500/50 rounded-xl font-bold flex items-center justify-center gap-1 transition text-xs active:scale-95 shadow-md cursor-pointer"
-                title="Повернуть влево на 45° (Стрелка влево ← или A)"
+                title="Повернуть влево на 10° (Стрелка влево ← или A)"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>← 45°</span>
+                <span>← 10°</span>
               </button>
-
-              {onMovePlayerForward && (
-                <button
-                  onClick={onMovePlayerForward}
-                  className="py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center justify-center gap-1 transition text-xs active:scale-95 shadow-md shadow-emerald-900/40 cursor-pointer"
-                  title="Шаг вперед (Стрелка вверх ↑ или W)"
-                >
-                  <ArrowUp className="w-3.5 h-3.5" />
-                  <span>Шаг</span>
-                </button>
-              )}
 
               <button
                 onClick={() => onTurnPlayer('right')}
                 className="flex-1 py-1.5 px-2 bg-indigo-600/30 hover:bg-indigo-600/60 text-indigo-200 border border-indigo-500/50 rounded-xl font-bold flex items-center justify-center gap-1 transition text-xs active:scale-95 shadow-md cursor-pointer"
-                title="Повернуть вправо на 45° (Стрелка вправо → или D)"
+                title="Повернуть вправо на 10° (Стрелка вправо → или D)"
               >
-                <span>45° →</span>
+                <span>10° →</span>
                 <RotateCw className="w-3.5 h-3.5" />
               </button>
             </div>
 
             <div className="text-2xs text-slate-400 text-center font-mono pt-0.5">
-              Управление: Клавиши Стрелки (← / → / ↑)
+              Управление: Клавиши A / D или Стрелки (← / →)
             </div>
           </div>
         )
@@ -1203,7 +1192,7 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
               <span className="text-slate-600">•</span>
               <span>Зажатие ПКМ: Обзор / Панорама поля</span>
               <span className="text-slate-600">•</span>
-              <span>Стрелки (← / →): Поворот на 45°</span>
+              <span>A / D или Стрелки (← / →): Поворот на 10°</span>
             </>
           )}
           <button

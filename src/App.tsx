@@ -303,7 +303,7 @@ export default function App() {
     };
   }, [playerName, playerColor]);
 
-  // Handle Steering Keyboard Controls (WASD / Arrows)
+  // Handle Steering Keyboard Controls (A/D / Arrows Left/Right)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeElement = document.activeElement;
@@ -324,24 +324,6 @@ export default function App() {
       } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D' || e.key === 'в' || e.key === 'В') {
         e.preventDefault();
         handleTurnPlayer('right');
-      } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === 'ц' || e.key === 'Ц') {
-        e.preventDefault();
-        handleMovePlayerForward();
-      } else if (e.key === ' ' || e.key === 'Shift') {
-        e.preventDefault();
-        // Dash boost
-        soundFx.playFlex();
-        if (controlledCreatureId) {
-          const c = (creatures || []).find((c) => c.id === controlledCreatureId);
-          if (c) {
-            gameWs.sendAdminControlInput(controlledCreatureId, c.angleDeg, c.x, c.y, true, true);
-          }
-        } else {
-          const yourC = (creatures || []).find((c) => c.id === yourCreatureId);
-          if (yourC) {
-            gameWs.sendInput(yourC.angleDeg, yourC.x, yourC.y, true, true);
-          }
-        }
       }
     };
 
@@ -356,7 +338,7 @@ export default function App() {
       setCreatures((prev) =>
         prev.map((c) => {
           if (c.id === controlledCreatureId) {
-            const delta = dir === 'left' ? -45 : 45;
+            const delta = dir === 'left' ? -10 : 10;
             const nextAngle = (c.angleDeg + delta + 360) % 360;
             gameWs.sendAdminControlInput(controlledCreatureId, nextAngle, c.x, c.y, true, false);
             return {
@@ -379,7 +361,7 @@ export default function App() {
     setCreatures((prev) =>
       prev.map((c) => {
         if (c.id === targetId) {
-          const delta = dir === 'left' ? -45 : 45;
+          const delta = dir === 'left' ? -10 : 10;
           const nextAngle = (c.angleDeg + delta + 360) % 360;
           gameWs.sendInput(nextAngle, c.x, c.y, true, false);
           return {
