@@ -1,0 +1,8 @@
+{
+  "name": "Remix Чудики на клетке (Grid Creatures)",
+  "description": "Многопользовательская игра в стиле Slither.io с чудиками на сетке, работающая на оптимизированном бэкенде Go (30 FPS WebSocket, спавн еды, рейтинг, AI боты и чат)",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
