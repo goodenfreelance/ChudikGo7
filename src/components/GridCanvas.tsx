@@ -59,6 +59,9 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
   const CELL_SIZE = 40; // Base distance between grid nodes in pixels
 
   const activeOffsetRef = useRef<Point>({ x: 0, y: 0 });
+  const animStatesRef = useRef<Map<string, { displayX: number; displayY: number; displayAngle: number; muscleAnimStep: number }>>(new Map());
+  const cameraOffsetRef = useRef<Point>({ x: 0, y: 0 });
+  const lastRenderTimeRef = useRef<number>(performance.now());
 
   // Center canvas on load
   useEffect(() => {
@@ -79,12 +82,17 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       setIsCameraLocked(true);
       const target = (creaturesRef.current || []).find((c) => c.id === selectedCreatureId);
       if (target) {
+        const animState = animStatesRef.current.get(selectedCreatureId);
+        const tx = animState ? animState.displayX : target.x;
+        const ty = animState ? animState.displayY : target.y;
         const width = canvasRef.current.width || canvasRef.current.clientWidth;
         const height = canvasRef.current.height || canvasRef.current.clientHeight;
-        setOffset({
-          x: width / 2 - target.x * CELL_SIZE * zoom,
-          y: height / 2 - target.y * CELL_SIZE * zoom,
-        });
+        const newOffset = {
+          x: width / 2 - tx * CELL_SIZE * zoom,
+          y: height / 2 - ty * CELL_SIZE * zoom,
+        };
+        setOffset(newOffset);
+        cameraOffsetRef.current = newOffset;
       }
     }
   }, [selectedCreatureId, focusTimestamp, zoom]);
@@ -356,16 +364,101 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, width, height);
 
-      // Compute effective camera offset (locks camera without triggering React setState loops)
+      const now = performance.now();
+      const dt = lastRenderTimeRef.current ? Math.min((now - lastRenderTimeRef.current) / 1000, 0.1) : 0.016;
+      lastRenderTimeRef.current = now;
+
+      const animMap = animStatesRef.current;
+
+      // Smoothly update display states for all creatures frame-by-frame
+      (creaturesRef.current || creatures).forEach((creature) => {
+        let state = animMap.get(creature.id);
+        if (!state) {
+          state = {
+            displayX: creature.x,
+            displayY: creature.y,
+            displayAngle: creature.angleDeg,
+            muscleAnimStep: creature.muscleStep,
+          };
+          animMap.set(creature.id, state);
+        } else {
+          // Calculate target with toroidal wrap
+          let targetX = creature.x;
+          let targetY = creature.y;
+          let targetAngle = creature.angleDeg;
+
+          let dx = targetX - state.displayX;
+          if (dx > halfWorld) targetX -= worldSize;
+          if (dx < -halfWorld) targetX += worldSize;
+
+          let dy = targetY - state.displayY;
+          if (dy > halfWorld) targetY -= worldSize;
+          if (dy < -halfWorld) targetY += worldSize;
+
+          // If distance is huge (e.g. initial spawn or teleport across world), snap immediately
+          if (Math.abs(targetX - state.displayX) > halfWorld / 2) {
+            state.displayX = creature.x;
+            targetX = creature.x;
+          }
+          if (Math.abs(targetY - state.displayY) > halfWorld / 2) {
+            state.displayY = creature.y;
+            targetY = creature.y;
+          }
+
+          // Smooth exponential lerp (continuous 60fps smoothing)
+          const lerpFactor = 1 - Math.exp(-14 * dt);
+
+          state.displayX += (targetX - state.displayX) * lerpFactor;
+          state.displayY += (targetY - state.displayY) * lerpFactor;
+
+          // Normalize display coordinates into toroidal bounds
+          if (state.displayX > halfWorld) state.displayX -= worldSize;
+          if (state.displayX < -halfWorld) state.displayX += worldSize;
+          if (state.displayY > halfWorld) state.displayY -= worldSize;
+          if (state.displayY < -halfWorld) state.displayY += worldSize;
+
+          // Shortest path angle rotation
+          let angleDiff = targetAngle - state.displayAngle;
+          while (angleDiff > 180) angleDiff -= 360;
+          while (angleDiff < -180) angleDiff += 360;
+
+          state.displayAngle += angleDiff * lerpFactor;
+          state.displayAngle = (state.displayAngle + 360) % 360;
+
+          // Muscle step continuous movement animation
+          const distToTarget = Math.hypot(targetX - state.displayX, targetY - state.displayY);
+          if (creature.state === 'moving' || creature.state === 'dashing' || distToTarget > 0.05) {
+            state.muscleAnimStep += dt * 5.0;
+          } else {
+            state.muscleAnimStep = creature.muscleStep + Math.sin(now / 350) * 0.3;
+          }
+        }
+      });
+
+      // Compute effective camera offset with smooth lerp tracking
       let currentOffset = offset;
       if (selectedCreatureId && isCameraLocked && !isDraggingRef.current) {
-        const target = (creaturesRef.current || []).find((c) => c.id === selectedCreatureId);
-        if (target) {
-          currentOffset = {
-            x: width / 2 - target.x * CELL_SIZE * zoom,
-            y: height / 2 - target.y * CELL_SIZE * zoom,
-          };
+        const selectedAnimState = animMap.get(selectedCreatureId);
+        const targetCreature = (creaturesRef.current || creatures).find((c) => c.id === selectedCreatureId);
+        if (selectedAnimState || targetCreature) {
+          const targetX = selectedAnimState ? selectedAnimState.displayX : targetCreature!.x;
+          const targetY = selectedAnimState ? selectedAnimState.displayY : targetCreature!.y;
+
+          const targetCamX = width / 2 - targetX * CELL_SIZE * zoom;
+          const targetCamY = height / 2 - targetY * CELL_SIZE * zoom;
+
+          if (!cameraOffsetRef.current || (cameraOffsetRef.current.x === 0 && cameraOffsetRef.current.y === 0)) {
+            cameraOffsetRef.current = { x: targetCamX, y: targetCamY };
+          } else {
+            const camLerp = 1 - Math.exp(-12 * dt);
+            cameraOffsetRef.current.x += (targetCamX - cameraOffsetRef.current.x) * camLerp;
+            cameraOffsetRef.current.y += (targetCamY - cameraOffsetRef.current.y) * camLerp;
+          }
+          currentOffset = cameraOffsetRef.current;
         }
+      } else {
+        cameraOffsetRef.current = { ...offset };
+        currentOffset = offset;
       }
       activeOffsetRef.current = currentOffset;
 
@@ -503,32 +596,10 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
 
       // Render Creatures with Physics Elements
       creatures.forEach((creature) => {
-        const p = creature.moveProgress;
-
-        let dx = creature.x - creature.prevX;
-        if (dx > halfWorld) dx -= worldSize;
-        if (dx < -halfWorld) dx += worldSize;
-
-        let dy = creature.y - creature.prevY;
-        if (dy > halfWorld) dy -= worldSize;
-        if (dy < -halfWorld) dy += worldSize;
-
-        const rawX = creature.prevX + dx * p;
-        const rawY = creature.prevY + dy * p;
-
-        let currentX = rawX;
-        if (currentX > halfWorld) currentX -= worldSize;
-        if (currentX < -halfWorld) currentX += worldSize;
-
-        let currentY = rawY;
-        if (currentY > halfWorld) currentY -= worldSize;
-        if (currentY < -halfWorld) currentY += worldSize;
-
-        // Interpolate angle with shortest path normalization
-        let angleDiff = creature.angleDeg - creature.prevAngleDeg;
-        if (angleDiff > 180) angleDiff -= 360;
-        if (angleDiff < -180) angleDiff += 360;
-        const currentAngle = creature.prevAngleDeg + angleDiff * p;
+        const animState = animMap.get(creature.id);
+        const currentX = animState ? animState.displayX : creature.x;
+        const currentY = animState ? animState.displayY : creature.y;
+        const currentAngle = animState ? animState.displayAngle : creature.angleDeg;
 
         // Base head orientation angle and rotation delta relative to blueprint layout
         const baseHeadAngle = determineCreatureHeadAngle(creature.elements);
@@ -569,9 +640,7 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
         }
 
         // Вычисляем точные иерархические сгибы всех шарниров и плеч чудика (плавная анимация сгибов ребер)
-        const animStep = creature.state === 'moving' || creature.moveProgress < 1
-          ? creature.muscleStep + creature.moveProgress
-          : creature.muscleStep + (Math.sin(Date.now() / 350) * 0.5 + 0.5);
+        const animStep = animState ? animState.muscleAnimStep : creature.muscleStep;
 
         const currentContractFactor = 0.5 - 0.5 * Math.cos(animStep * Math.PI);
         const isMuscleContracted = currentContractFactor > 0.05;
