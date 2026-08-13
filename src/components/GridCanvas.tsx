@@ -22,7 +22,7 @@ interface GridCanvasProps {
   onMovePlayerForward?: () => void;
 }
 
-export const GridCanvas: React.FC<GridCanvasProps> = ({
+const GridCanvasComponent: React.FC<GridCanvasProps> = ({
   creatures = [],
   foods = [],
   selectedCreatureId,
@@ -72,9 +72,33 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
   }, []);
 
   const creaturesRef = useRef(creatures);
-  useEffect(() => {
-    creaturesRef.current = creatures;
-  }, [creatures]);
+  useEffect(() => { creaturesRef.current = creatures; }, [creatures]);
+
+  const foodsRef = useRef(foods);
+  useEffect(() => { foodsRef.current = foods; }, [foods]);
+
+  const zoomRef = useRef(zoom);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  const offsetRef = useRef(offset);
+  useEffect(() => { offsetRef.current = offset; }, [offset]);
+
+  const gridThemeRef = useRef(gridTheme);
+  useEffect(() => { gridThemeRef.current = gridTheme; }, [gridTheme]);
+
+  const showNodesRef = useRef(showNodes);
+  useEffect(() => { showNodesRef.current = showNodes; }, [showNodes]);
+
+  const selectedCreatureIdRef = useRef(selectedCreatureId);
+  useEffect(() => { selectedCreatureIdRef.current = selectedCreatureId; }, [selectedCreatureId]);
+
+  const pendingPlacementRef = useRef(pendingPlacement);
+  useEffect(() => { pendingPlacementRef.current = pendingPlacement; }, [pendingPlacement]);
+
+  const isCameraLockedRef = useRef(isCameraLocked);
+  useEffect(() => { isCameraLockedRef.current = isCameraLocked; }, [isCameraLocked]);
+
+  const hoverGridPosRef = useRef<Point | null>(null);
 
   // Center view on selected creature whenever selection or focusTimestamp changes
   useEffect(() => {
@@ -172,7 +196,10 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       const gridPos = screenToGrid(mouseX, mouseY);
-      setHoverGridPos(gridPos);
+      hoverGridPosRef.current = gridPos;
+      if (pendingPlacementRef.current) {
+        setHoverGridPos(gridPos);
+      }
     }
 
     if (isDraggingRef.current) {
@@ -317,7 +344,7 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
     }
   };
 
-  // Main Canvas Render Loop
+  // Main Canvas Render Loop (Runs continuously at 60+ FPS via requestAnimationFrame without tearing down)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -330,31 +357,38 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       const width = canvas.width;
       const height = canvas.height;
 
+      const currentZoom = zoomRef.current;
+      const currentGridTheme = gridThemeRef.current;
+      const currentSelectedId = selectedCreatureIdRef.current;
+      const currentPendingPlacement = pendingPlacementRef.current;
+      const currentShowNodes = showNodesRef.current;
+      const currentIsCameraLocked = isCameraLockedRef.current;
+
       // Theme Colors
-      const isGameTheme = gridTheme === 'game' || gridTheme === 'game-light';
+      const isGameTheme = currentGridTheme === 'game' || currentGridTheme === 'game-light';
 
       let bgColor = '#090d16';
       let gridLineColor = 'rgba(255, 255, 255, 0.1)';
       let nodeDotColor = 'rgba(255, 255, 255, 0.3)';
       let mainInkColor = '#f1f5f9';
 
-      if (gridTheme === 'notebook') {
+      if (currentGridTheme === 'notebook') {
         bgColor = '#fafaf9';
         gridLineColor = 'rgba(59, 130, 246, 0.22)';
         nodeDotColor = 'rgba(30, 58, 138, 0.4)';
         mainInkColor = '#1e293b';
-      } else if (gridTheme === 'blueprint') {
+      } else if (currentGridTheme === 'blueprint') {
         bgColor = '#0f172a';
         gridLineColor = 'rgba(56, 189, 248, 0.25)';
         nodeDotColor = '#38bdf8';
         mainInkColor = '#e0f2fe';
-      } else if (gridTheme === 'game') {
-        bgColor = '#0a0d1d'; // Game arena dark vibrant space
+      } else if (currentGridTheme === 'game') {
+        bgColor = '#0a0d1d';
         gridLineColor = 'rgba(168, 85, 247, 0.22)';
         nodeDotColor = '#ec4899';
         mainInkColor = '#ffffff';
-      } else if (gridTheme === 'game-light') {
-        bgColor = '#f0fdf4'; // Light vibrant candy garden
+      } else if (currentGridTheme === 'game-light') {
+        bgColor = '#f0fdf4';
         gridLineColor = 'rgba(236, 72, 153, 0.22)';
         nodeDotColor = '#8b5cf6';
         mainInkColor = '#0f172a';
@@ -369,9 +403,10 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       lastRenderTimeRef.current = now;
 
       const animMap = animStatesRef.current;
+      const currentCreatures = creaturesRef.current || [];
 
       // Smoothly update display states for all creatures frame-by-frame
-      (creaturesRef.current || creatures).forEach((creature) => {
+      currentCreatures.forEach((creature) => {
         let state = animMap.get(creature.id);
         if (!state) {
           state = {
@@ -395,7 +430,6 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
           if (dy > halfWorld) targetY -= worldSize;
           if (dy < -halfWorld) targetY += worldSize;
 
-          // If distance is huge (e.g. initial spawn or teleport across world), snap immediately
           if (Math.abs(targetX - state.displayX) > halfWorld / 2) {
             state.displayX = creature.x;
             targetX = creature.x;
@@ -405,19 +439,16 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
             targetY = creature.y;
           }
 
-          // Smooth exponential lerp (continuous 60fps smoothing)
           const lerpFactor = 1 - Math.exp(-14 * dt);
 
           state.displayX += (targetX - state.displayX) * lerpFactor;
           state.displayY += (targetY - state.displayY) * lerpFactor;
 
-          // Normalize display coordinates into toroidal bounds
           if (state.displayX > halfWorld) state.displayX -= worldSize;
           if (state.displayX < -halfWorld) state.displayX += worldSize;
           if (state.displayY > halfWorld) state.displayY -= worldSize;
           if (state.displayY < -halfWorld) state.displayY += worldSize;
 
-          // Shortest path angle rotation
           let angleDiff = targetAngle - state.displayAngle;
           while (angleDiff > 180) angleDiff -= 360;
           while (angleDiff < -180) angleDiff += 360;
@@ -425,7 +456,6 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
           state.displayAngle += angleDiff * lerpFactor;
           state.displayAngle = (state.displayAngle + 360) % 360;
 
-          // Muscle step continuous movement animation
           const distToTarget = Math.hypot(targetX - state.displayX, targetY - state.displayY);
           if (creature.state === 'moving' || creature.state === 'dashing' || distToTarget > 0.05) {
             state.muscleAnimStep += dt * 5.0;
@@ -436,16 +466,16 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       });
 
       // Compute effective camera offset with smooth lerp tracking
-      let currentOffset = offset;
-      if (selectedCreatureId && isCameraLocked && !isDraggingRef.current) {
-        const selectedAnimState = animMap.get(selectedCreatureId);
-        const targetCreature = (creaturesRef.current || creatures).find((c) => c.id === selectedCreatureId);
+      let currentOffset = offsetRef.current;
+      if (currentSelectedId && currentIsCameraLocked && !isDraggingRef.current) {
+        const selectedAnimState = animMap.get(currentSelectedId);
+        const targetCreature = currentCreatures.find((c) => c.id === currentSelectedId);
         if (selectedAnimState || targetCreature) {
           const targetX = selectedAnimState ? selectedAnimState.displayX : targetCreature!.x;
           const targetY = selectedAnimState ? selectedAnimState.displayY : targetCreature!.y;
 
-          const targetCamX = width / 2 - targetX * CELL_SIZE * zoom;
-          const targetCamY = height / 2 - targetY * CELL_SIZE * zoom;
+          const targetCamX = width / 2 - targetX * CELL_SIZE * currentZoom;
+          const targetCamY = height / 2 - targetY * CELL_SIZE * currentZoom;
 
           if (!cameraOffsetRef.current || (cameraOffsetRef.current.x === 0 && cameraOffsetRef.current.y === 0)) {
             cameraOffsetRef.current = { x: targetCamX, y: targetCamY };
@@ -457,13 +487,13 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
           currentOffset = cameraOffsetRef.current;
         }
       } else {
-        cameraOffsetRef.current = { ...offset };
-        currentOffset = offset;
+        cameraOffsetRef.current = { ...offsetRef.current };
+        currentOffset = offsetRef.current;
       }
       activeOffsetRef.current = currentOffset;
 
       // Render Grid Lines
-      const scaledCell = CELL_SIZE * zoom;
+      const scaledCell = CELL_SIZE * currentZoom;
       const startX = Math.floor((-currentOffset.x) / scaledCell) - 1;
       const endX = Math.ceil((width - currentOffset.x) / scaledCell) + 1;
       const startY = Math.floor((-currentOffset.y) / scaledCell) - 1;
@@ -471,7 +501,7 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
 
       ctx.beginPath();
       ctx.strokeStyle = gridLineColor;
-      ctx.lineWidth = Math.max(1, 1.2 * zoom);
+      ctx.lineWidth = Math.max(1, 1.2 * currentZoom);
 
       for (let x = startX; x <= endX; x++) {
         const screenX = currentOffset.x + x * scaledCell;
@@ -485,10 +515,10 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       }
       ctx.stroke();
 
-      // Render Grid Intersections / Nodes (Шарнирные узлы)
-      if (showNodes) {
+      // Render Grid Intersections / Nodes
+      if (currentShowNodes) {
         ctx.fillStyle = nodeDotColor;
-        const dotRadius = Math.max(1.5, 2.5 * zoom);
+        const dotRadius = Math.max(1.5, 2.5 * currentZoom);
         ctx.beginPath();
         for (let x = startX; x <= endX; x++) {
           const screenX = currentOffset.x + x * scaledCell;
@@ -501,38 +531,42 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
         ctx.fill();
       }
 
-      // Render Field Arena Border Frame
-      const arenaTopLeft = gridToScreen(-halfWorld, -halfWorld);
-      const arenaBottomRight = gridToScreen(halfWorld, halfWorld);
-      const arenaW = arenaBottomRight.x - arenaTopLeft.x;
-      const arenaH = arenaBottomRight.y - arenaTopLeft.y;
+      // Render Field Arena Border Frame (Fast layered stroke, no expensive shadowBlur)
+      const arenaTopLeft = {
+        x: currentOffset.x + (-halfWorld) * scaledCell,
+        y: currentOffset.y + (-halfWorld) * scaledCell,
+      };
+      const arenaW = worldSize * scaledCell;
+      const arenaH = worldSize * scaledCell;
 
+      const arenaColor = isGameTheme ? '#ec4899' : (currentGridTheme === 'blueprint' ? '#38bdf8' : '#3b82f6');
       ctx.save();
-      ctx.strokeStyle = isGameTheme ? '#ec4899' : (gridTheme === 'blueprint' ? '#38bdf8' : '#3b82f6');
-      ctx.lineWidth = Math.max(2, 3.5 * zoom);
-      ctx.shadowBlur = 12 * zoom;
-      ctx.shadowColor = ctx.strokeStyle;
+      ctx.strokeStyle = arenaColor + '33';
+      ctx.lineWidth = Math.max(6, 10 * currentZoom);
+      ctx.strokeRect(arenaTopLeft.x, arenaTopLeft.y, arenaW, arenaH);
+
+      ctx.strokeStyle = arenaColor;
+      ctx.lineWidth = Math.max(2, 3.5 * currentZoom);
       ctx.strokeRect(arenaTopLeft.x, arenaTopLeft.y, arenaW, arenaH);
       ctx.restore();
 
       // Render Food on nodes
       const nowTime = Date.now();
-      foods.forEach((food) => {
-        const pos = gridToScreen(food.x, food.y);
+      const currentFoods = foodsRef.current || [];
+      currentFoods.forEach((food) => {
+        const pos = {
+          x: currentOffset.x + food.x * scaledCell,
+          y: currentOffset.y + food.y * scaledCell,
+        };
         ctx.save();
         ctx.translate(pos.x, pos.y);
 
         const pulse = Math.sin(nowTime / 200 + food.x + food.y) * 2;
-        const foodRadius = (6 + pulse) * zoom;
+        const foodRadius = (6 + pulse) * currentZoom;
 
         if (isGameTheme) {
-          // Candy food orb with glowing aura
           const glowR = foodRadius * 2.2;
           const mainColor = food.type === 'golden' ? '#facc15' : (food.type === 'super' ? '#ec4899' : '#10b981');
-
-          ctx.save();
-          ctx.shadowBlur = 10 * zoom;
-          ctx.shadowColor = mainColor;
 
           // Glowing aura
           ctx.fillStyle = mainColor + '44';
@@ -541,14 +575,15 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
           ctx.fill();
 
           // Shiny 3D candy sphere
-          const sphereGrad = ctx.createRadialGradient(-foodRadius * 0.3, -foodRadius * 0.3, 1, 0, 0, foodRadius);
-          sphereGrad.addColorStop(0, '#ffffff');
-          sphereGrad.addColorStop(0.3, mainColor);
-          sphereGrad.addColorStop(1, '#0f172a');
-
           ctx.beginPath();
           ctx.arc(0, 0, foodRadius, 0, Math.PI * 2);
-          ctx.fillStyle = sphereGrad;
+          ctx.fillStyle = mainColor;
+          ctx.fill();
+
+          // Shadow overlay
+          ctx.beginPath();
+          ctx.arc(0, foodRadius * 0.15, foodRadius * 0.85, 0, Math.PI);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
           ctx.fill();
 
           // White specular highlight
@@ -556,8 +591,6 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
           ctx.arc(-foodRadius * 0.3, -foodRadius * 0.3, foodRadius * 0.35, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
           ctx.fill();
-
-          ctx.restore();
         } else {
           if (food.type === 'golden') {
             ctx.fillStyle = 'rgba(234, 179, 8, 0.25)';
@@ -587,7 +620,7 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
           ctx.fill();
 
           ctx.strokeStyle = mainInkColor;
-          ctx.lineWidth = 1.5 * zoom;
+          ctx.lineWidth = 1.5 * currentZoom;
           ctx.stroke();
         }
 
@@ -595,17 +628,23 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
       });
 
       // Render Creatures with Physics Elements
-      creatures.forEach((creature) => {
+      currentCreatures.forEach((creature) => {
         const animState = animMap.get(creature.id);
         const currentX = animState ? animState.displayX : creature.x;
         const currentY = animState ? animState.displayY : creature.y;
         const currentAngle = animState ? animState.displayAngle : creature.angleDeg;
 
-        // Base head orientation angle and rotation delta relative to blueprint layout
+        // Base head orientation angle and rotation delta
         const baseHeadAngle = determineCreatureHeadAngle(creature.elements);
         const rotationDelta = currentAngle - baseHeadAngle;
 
-        const isSelected = creature.id === selectedCreatureId;
+        const isSelected = creature.id === currentSelectedId;
+        const animStep = animState ? animState.muscleAnimStep : creature.muscleStep;
+        const currentContractFactor = 0.5 - 0.5 * Math.cos(animStep * Math.PI);
+        const isMuscleContracted = currentContractFactor > 0.05;
+
+        // Calculate kinematic bends ONCE per creature per frame
+        const bentMap = calculateKinematicBends(creature.elements, animStep);
 
         // Toroidal wrapper offsets for seamless boundary transition
         const wrapOffsets: { x: number; y: number }[] = [{ x: 0, y: 0 }];
@@ -614,361 +653,307 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
         if (currentX < -edgeThresh) wrapOffsets.push({ x: worldSize, y: 0 });
         if (currentY > edgeThresh) wrapOffsets.push({ x: 0, y: -worldSize });
         if (currentY < -edgeThresh) wrapOffsets.push({ x: 0, y: worldSize });
-        if (currentX > edgeThresh && currentY > edgeThresh) wrapOffsets.push({ x: -worldSize, y: -worldSize });
-        if (currentX > edgeThresh && currentY < -edgeThresh) wrapOffsets.push({ x: -worldSize, y: worldSize });
-        if (currentX < -edgeThresh && currentY > edgeThresh) wrapOffsets.push({ x: worldSize, y: -worldSize });
-        if (currentX < -edgeThresh && currentY < -edgeThresh) wrapOffsets.push({ x: worldSize, y: worldSize });
 
         wrapOffsets.forEach((off) => {
-          const centerPos = gridToScreen(currentX + off.x, currentY + off.y);
+          const centerPos = {
+            x: currentOffset.x + (currentX + off.x) * scaledCell,
+            y: currentOffset.y + (currentY + off.y) * scaledCell,
+          };
 
           ctx.save();
           ctx.translate(centerPos.x, centerPos.y);
           ctx.rotate((rotationDelta * Math.PI) / 180);
 
-        const isSelected = creature.id === selectedCreatureId;
-
-        // Selection boundary
-        if (isSelected) {
-          ctx.beginPath();
-          ctx.arc(0, 0, 36 * zoom, 0, Math.PI * 2);
-          ctx.strokeStyle = '#6366f1';
-          ctx.lineWidth = 2 * zoom;
-          ctx.setLineDash([6 * zoom, 4 * zoom]);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-
-        // Вычисляем точные иерархические сгибы всех шарниров и плеч чудика (плавная анимация сгибов ребер)
-        const animStep = animState ? animState.muscleAnimStep : creature.muscleStep;
-
-        const currentContractFactor = 0.5 - 0.5 * Math.cos(animStep * Math.PI);
-        const isMuscleContracted = currentContractFactor > 0.05;
-
-        // Проверяем реальное согнутое состояние мышц на левой и правой стороне
-        const isLeftMuscleFlexed = creature.elements.some((m) => {
-          if (!m.type.includes('left')) return false;
-          if (m.type === 'muscle-left') return isMuscleContracted;
-          if (m.type === 'muscle-random-left') {
-            return getRandomMuscleState(m, animStep).isFlexed;
-          }
-          return false;
-        });
-
-        const isRightMuscleFlexed = creature.elements.some((m) => {
-          if (!m.type.includes('right')) return false;
-          if (m.type === 'muscle-right') return isMuscleContracted;
-          if (m.type === 'muscle-random-right') {
-            return getRandomMuscleState(m, animStep).isFlexed;
-          }
-          return false;
-        });
-
-        const bentMap = calculateKinematicBends(creature.elements, animStep);
-
-        // Render each physical element
-        creature.elements.forEach((el) => {
-          const bent = bentMap.get(el.id) || { relX: el.relX, relY: el.relY, rotationDeg: 0 };
-          const elX = bent.relX * scaledCell;
-          const elY = bent.relY * scaledCell;
-
-          ctx.save();
-          ctx.translate(elX, elY);
-          ctx.rotate((bent.rotationDeg * Math.PI) / 180);
-
-          if (el.type === 'head') {
-            if (isGameTheme) {
-              // Cute head with big cartoon googly eyes!
-              const headR = 14 * zoom;
-              const headGrad = ctx.createRadialGradient(-headR * 0.3, -headR * 0.3, 1, 0, 0, headR);
-              headGrad.addColorStop(0, '#ffffff');
-              headGrad.addColorStop(0.35, creature.color || '#ec4899');
-              headGrad.addColorStop(1, '#0f172a');
-
-              ctx.beginPath();
-              ctx.arc(0, 0, headR, 0, Math.PI * 2);
-              ctx.fillStyle = headGrad;
-              ctx.fill();
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 2 * zoom;
-              ctx.stroke();
-
-              // Two Cartoon Googly Eyes
-              const eyeR = 5.5 * zoom;
-              const pupilR = 2.8 * zoom;
-
-              // Left Eye
-              ctx.beginPath();
-              ctx.arc(-5.5 * zoom, -5.5 * zoom, eyeR, 0, Math.PI * 2);
-              ctx.fillStyle = '#ffffff';
-              ctx.fill();
-              ctx.strokeStyle = '#000000';
-              ctx.lineWidth = 1 * zoom;
-              ctx.stroke();
-
-              ctx.beginPath();
-              ctx.arc(-4.5 * zoom, -4.5 * zoom, pupilR, 0, Math.PI * 2);
-              ctx.fillStyle = '#0f172a';
-              ctx.fill();
-
-              ctx.beginPath();
-              ctx.arc(-5.5 * zoom, -5.5 * zoom, 1.2 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = '#ffffff';
-              ctx.fill();
-
-              // Right Eye
-              ctx.beginPath();
-              ctx.arc(5.5 * zoom, -5.5 * zoom, eyeR, 0, Math.PI * 2);
-              ctx.fillStyle = '#ffffff';
-              ctx.fill();
-              ctx.strokeStyle = '#000000';
-              ctx.lineWidth = 1 * zoom;
-              ctx.stroke();
-
-              ctx.beginPath();
-              ctx.arc(6.5 * zoom, -4.5 * zoom, pupilR, 0, Math.PI * 2);
-              ctx.fillStyle = '#0f172a';
-              ctx.fill();
-
-              ctx.beginPath();
-              ctx.arc(5.5 * zoom, -5.5 * zoom, 1.2 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = '#ffffff';
-              ctx.fill();
-            } else {
-              // Standard head
-              ctx.beginPath();
-              ctx.arc(0, 0, 11 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = '#fef08a';
-              ctx.fill();
-              ctx.strokeStyle = '#eab308';
-              ctx.lineWidth = 2.5 * zoom;
-              ctx.stroke();
-
-              // Зрачок
-              ctx.beginPath();
-              ctx.arc(0, 0, 4.5 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = '#0f172a';
-              ctx.fill();
-
-              // Блик
-              ctx.beginPath();
-              ctx.arc(-2 * zoom, -2 * zoom, 1.5 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = '#ffffff';
-              ctx.fill();
-            }
-          } else if (el.type === 'joint') {
-            if (isGameTheme) {
-              const jointR = 9 * zoom;
-              const jointGrad = ctx.createRadialGradient(-jointR * 0.3, -jointR * 0.3, 1, 0, 0, jointR);
-              jointGrad.addColorStop(0, '#a5f3fc');
-              jointGrad.addColorStop(0.5, '#06b6d4');
-              jointGrad.addColorStop(1, '#083344');
-
-              ctx.beginPath();
-              ctx.arc(0, 0, jointR, 0, Math.PI * 2);
-              ctx.fillStyle = jointGrad;
-              ctx.fill();
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 1.5 * zoom;
-              ctx.stroke();
-
-              ctx.beginPath();
-              ctx.arc(-jointR * 0.3, -jointR * 0.3, jointR * 0.3, 0, Math.PI * 2);
-              ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-              ctx.fill();
-            } else {
-              ctx.beginPath();
-              ctx.arc(0, 0, 8 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = gridTheme === 'notebook' ? '#ffffff' : '#1e293b';
-              ctx.fill();
-              ctx.strokeStyle = '#38bdf8';
-              ctx.lineWidth = 2.5 * zoom;
-              ctx.stroke();
-
-              ctx.beginPath();
-              ctx.arc(0, 0, 3 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = '#0284c7';
-              ctx.fill();
-            }
-          } else if (el.type.startsWith('edge-')) {
-            let x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-            if (el.type === 'edge-h') { x1 = -scaledCell / 2; x2 = scaledCell / 2; }
-            else if (el.type === 'edge-v') { y1 = -scaledCell / 2; y2 = scaledCell / 2; }
-            else if (el.type === 'edge-d1') { x1 = -scaledCell / 2; y1 = scaledCell / 2; x2 = scaledCell / 2; y2 = -scaledCell / 2; }
-            else if (el.type === 'edge-d2') { x1 = -scaledCell / 2; y1 = -scaledCell / 2; x2 = scaledCell / 2; y2 = scaledCell / 2; }
-
+          // Selection boundary
+          if (isSelected) {
             ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.strokeStyle = creature.color || '#3b82f6';
-            ctx.lineWidth = (isGameTheme ? 7.5 : 3.5) * zoom;
-            ctx.lineCap = 'round';
-            if (isGameTheme) {
-              ctx.shadowBlur = 8 * zoom;
-              ctx.shadowColor = creature.color || '#3b82f6';
-            }
+            ctx.arc(0, 0, 36 * currentZoom, 0, Math.PI * 2);
+            ctx.strokeStyle = '#6366f1';
+            ctx.lineWidth = 2 * currentZoom;
+            ctx.setLineDash([6 * currentZoom, 4 * currentZoom]);
             ctx.stroke();
+            ctx.setLineDash([]);
+          }
 
-            if (isGameTheme) {
-              // Glossy white inner tube highlight
+          // Render each physical element
+          creature.elements.forEach((el) => {
+            const bent = bentMap.get(el.id) || { relX: el.relX, relY: el.relY, rotationDeg: 0 };
+            const elX = bent.relX * scaledCell;
+            const elY = bent.relY * scaledCell;
+
+            ctx.save();
+            ctx.translate(elX, elY);
+            ctx.rotate((bent.rotationDeg * Math.PI) / 180);
+
+            if (el.type === 'head') {
+              if (isGameTheme) {
+                const headR = 14 * currentZoom;
+                ctx.beginPath();
+                ctx.arc(0, 0, headR, 0, Math.PI * 2);
+                ctx.fillStyle = creature.color || '#ec4899';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2 * currentZoom;
+                ctx.stroke();
+
+                // Two Cartoon Googly Eyes
+                const eyeR = 5.5 * currentZoom;
+                const pupilR = 2.8 * currentZoom;
+
+                // Left Eye
+                ctx.beginPath();
+                ctx.arc(-5.5 * currentZoom, -5.5 * currentZoom, eyeR, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1 * currentZoom;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(-4.5 * currentZoom, -4.5 * currentZoom, pupilR, 0, Math.PI * 2);
+                ctx.fillStyle = '#0f172a';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(-5.5 * currentZoom, -5.5 * currentZoom, 1.2 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+
+                // Right Eye
+                ctx.beginPath();
+                ctx.arc(5.5 * currentZoom, -5.5 * currentZoom, eyeR, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1 * currentZoom;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(6.5 * currentZoom, -4.5 * currentZoom, pupilR, 0, Math.PI * 2);
+                ctx.fillStyle = '#0f172a';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(5.5 * currentZoom, -5.5 * currentZoom, 1.2 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+              } else {
+                ctx.beginPath();
+                ctx.arc(0, 0, 11 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = '#fef08a';
+                ctx.fill();
+                ctx.strokeStyle = '#eab308';
+                ctx.lineWidth = 2.5 * currentZoom;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(0, 0, 4.5 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = '#0f172a';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(-2 * currentZoom, -2 * currentZoom, 1.5 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+              }
+            } else if (el.type === 'joint') {
+              if (isGameTheme) {
+                const jointR = 9 * currentZoom;
+                ctx.beginPath();
+                ctx.arc(0, 0, jointR, 0, Math.PI * 2);
+                ctx.fillStyle = '#06b6d4';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5 * currentZoom;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(-jointR * 0.3, -jointR * 0.3, jointR * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                ctx.fill();
+              } else {
+                ctx.beginPath();
+                ctx.arc(0, 0, 8 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = currentGridTheme === 'notebook' ? '#ffffff' : '#1e293b';
+                ctx.fill();
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2.5 * currentZoom;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(0, 0, 3 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = '#0284c7';
+                ctx.fill();
+              }
+            } else if (el.type.startsWith('edge-')) {
+              let x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+              if (el.type === 'edge-h') { x1 = -scaledCell / 2; x2 = scaledCell / 2; }
+              else if (el.type === 'edge-v') { y1 = -scaledCell / 2; y2 = scaledCell / 2; }
+              else if (el.type === 'edge-d1') { x1 = -scaledCell / 2; y1 = scaledCell / 2; x2 = scaledCell / 2; y2 = -scaledCell / 2; }
+              else if (el.type === 'edge-d2') { x1 = -scaledCell / 2; y1 = -scaledCell / 2; x2 = scaledCell / 2; y2 = scaledCell / 2; }
+
               ctx.beginPath();
               ctx.moveTo(x1, y1);
               ctx.lineTo(x2, y2);
-              ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
-              ctx.lineWidth = 2.5 * zoom;
+              ctx.strokeStyle = creature.color || '#3b82f6';
+              ctx.lineWidth = (isGameTheme ? 7.5 : 3.5) * currentZoom;
               ctx.lineCap = 'round';
-              ctx.shadowBlur = 0;
               ctx.stroke();
-            }
-          } else if (el.type.startsWith('muscle-')) {
-            // Мышца (пружина) - зажим под шарниром
-            const isLeft = el.type.includes('left');
-            const isRandom = el.type.includes('random');
 
-            let isFlexed = false;
-            let isJustFlexed = false;
+              if (isGameTheme) {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+                ctx.lineWidth = 2.5 * currentZoom;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+              }
+            } else if (el.type.startsWith('muscle-')) {
+              const isLeft = el.type.includes('left');
+              const isRandom = el.type.includes('random');
 
-            if (!isRandom) {
-              isFlexed = isMuscleContracted;
-              isJustFlexed = isMuscleContracted;
-            } else {
-              const mState = getRandomMuscleState(el, animStep);
-              isFlexed = mState.isFlexed;
-              isJustFlexed = mState.justFlexed;
-            }
+              let isFlexed = false;
+              let isJustFlexed = false;
 
-            const muscleFlexFactor = isRandom ? (isFlexed ? currentContractFactor : 0) : currentContractFactor;
-            const flex = 1.2 - 0.6 * muscleFlexFactor;
-            const sign = isLeft ? -1 : 1;
+              if (!isRandom) {
+                isFlexed = isMuscleContracted;
+                isJustFlexed = isMuscleContracted;
+              } else {
+                const mState = getRandomMuscleState(el, animStep);
+                isFlexed = mState.isFlexed;
+                isJustFlexed = mState.justFlexed;
+              }
 
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.quadraticCurveTo(sign * 14 * zoom * flex, 10 * zoom, sign * 20 * zoom, 0);
+              const muscleFlexFactor = isRandom ? (isFlexed ? currentContractFactor : 0) : currentContractFactor;
+              const flex = 1.2 - 0.6 * muscleFlexFactor;
+              const sign = isLeft ? -1 : 1;
 
-            if (el.type === 'muscle-left') ctx.strokeStyle = '#f43f5e';
-            else if (el.type === 'muscle-right') ctx.strokeStyle = '#a855f7';
-            else if (el.type === 'muscle-random-left') ctx.strokeStyle = isFlexed ? '#ff8c00' : '#f97316';
-            else if (el.type === 'muscle-random-right') ctx.strokeStyle = isFlexed ? '#e024c3' : '#d946ef';
-
-            ctx.lineWidth = (isFlexed ? 4.5 : 3) * zoom;
-            if (isRandom) {
-              ctx.setLineDash([4 * zoom, 2 * zoom]);
-            }
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Яркий вспыхивающий индикатор в момент импульса сгиба!
-            if (isRandom && isJustFlexed) {
               ctx.beginPath();
-              ctx.arc(sign * 12 * zoom, 4 * zoom, 5 * zoom, 0, Math.PI * 2);
-              ctx.fillStyle = isLeft ? '#ff8c00' : '#e024c3';
-              ctx.fill();
+              ctx.moveTo(0, 0);
+              ctx.quadraticCurveTo(sign * 14 * currentZoom * flex, 10 * currentZoom, sign * 20 * currentZoom, 0);
+
+              if (el.type === 'muscle-left') ctx.strokeStyle = '#f43f5e';
+              else if (el.type === 'muscle-right') ctx.strokeStyle = '#a855f7';
+              else if (el.type === 'muscle-random-left') ctx.strokeStyle = isFlexed ? '#ff8c00' : '#f97316';
+              else if (el.type === 'muscle-random-right') ctx.strokeStyle = isFlexed ? '#e024c3' : '#d946ef';
+
+              ctx.lineWidth = (isFlexed ? 4.5 : 3) * currentZoom;
+              if (isRandom) {
+                ctx.setLineDash([4 * currentZoom, 2 * currentZoom]);
+              }
+              ctx.stroke();
+              ctx.setLineDash([]);
+
+              if (isRandom && isJustFlexed) {
+                ctx.beginPath();
+                ctx.arc(sign * 12 * currentZoom, 4 * currentZoom, 5 * currentZoom, 0, Math.PI * 2);
+                ctx.fillStyle = isLeft ? '#ff8c00' : '#e024c3';
+                ctx.fill();
+              }
+
+              if (isRandom && el.randomChance) {
+                ctx.fillStyle = isFlexed ? '#ffffff' : (isLeft ? '#f97316' : '#d946ef');
+                ctx.font = `bold ${Math.max(8, 9 * currentZoom)}px monospace`;
+                ctx.textAlign = 'center';
+                ctx.fillText(`🎲${el.randomChance}%`, sign * 14 * currentZoom, 18 * currentZoom);
+              }
             }
 
-            // Probability readout for random muscle
-            if (isRandom && el.randomChance) {
-              ctx.fillStyle = isFlexed ? '#ffffff' : (isLeft ? '#f97316' : '#d946ef');
-              ctx.font = `bold ${Math.max(8, 9 * zoom)}px monospace`;
-              ctx.textAlign = 'center';
-              ctx.fillText(`🎲${el.randomChance}%`, sign * 14 * zoom, 18 * zoom);
-            }
-          }
+            ctx.restore();
+          });
 
           ctx.restore();
-        });
 
-        ctx.restore(); // Restore angle rotation matrix
+          // Textual HUD overlay over creature
+          ctx.save();
+          ctx.translate(centerPos.x, centerPos.y);
 
-        // Textual HUD overlay over creature
-        ctx.save();
-        ctx.translate(centerPos.x, centerPos.y);
+          const f = creature.forces;
 
-        const f = creature.forces;
+          if (isGameTheme) {
+            const nameText = `🐍 ${creature.name} [M:${f.totalMass}]`;
+            ctx.font = `bold ${Math.max(11, 13 * currentZoom)}px system-ui, sans-serif`;
+            const textWidth = ctx.measureText(nameText).width;
+            const badgeW = textWidth + 18 * currentZoom;
+            const badgeH = 20 * currentZoom;
 
-        if (isGameTheme) {
-          // Player tag badge
-          const nameText = `🐍 ${creature.name} [M:${f.totalMass}]`;
-          ctx.font = `bold ${Math.max(11, 13 * zoom)}px system-ui, sans-serif`;
-          const textWidth = ctx.measureText(nameText).width;
-          const badgeW = textWidth + 18 * zoom;
-          const badgeH = 20 * zoom;
+            ctx.fillStyle = currentGridTheme === 'game-light' ? 'rgba(255, 255, 255, 0.92)' : 'rgba(15, 23, 42, 0.85)';
+            ctx.strokeStyle = creature.color || '#ec4899';
+            ctx.lineWidth = 1.5 * currentZoom;
 
-          ctx.fillStyle = gridTheme === 'game-light' ? 'rgba(255, 255, 255, 0.92)' : 'rgba(15, 23, 42, 0.85)';
-          ctx.strokeStyle = creature.color || '#ec4899';
-          ctx.lineWidth = 1.5 * zoom;
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+              ctx.roundRect(-badgeW / 2, -40 * currentZoom, badgeW, badgeH, 10 * currentZoom);
+            } else {
+              ctx.rect(-badgeW / 2, -40 * currentZoom, badgeW, badgeH);
+            }
+            ctx.fill();
+            ctx.stroke();
 
-          ctx.beginPath();
-          if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(-badgeW / 2, -40 * zoom, badgeW, badgeH, 10 * zoom);
+            ctx.fillStyle = currentGridTheme === 'game-light' ? '#0f172a' : '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(nameText, 0, -30 * currentZoom);
           } else {
-            ctx.rect(-badgeW / 2, -40 * zoom, badgeW, badgeH);
+            ctx.fillStyle = mainInkColor;
+            ctx.font = `bold ${Math.max(11, 13 * currentZoom)}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText(creature.name, 0, -32 * currentZoom);
+
+            ctx.font = `${Math.max(9, 10 * currentZoom)}px monospace`;
+            ctx.fillStyle = '#10b981';
+            ctx.fillText(
+              `m:${f.totalMass} | v:${f.forwardSpeed.toFixed(2)} | ω:${f.netRotationDeg.toFixed(0)}°`,
+              0,
+              -20 * currentZoom
+            );
           }
-          ctx.fill();
-          ctx.stroke();
 
-          ctx.fillStyle = gridTheme === 'game-light' ? '#0f172a' : '#ffffff';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(nameText, 0, -30 * zoom);
-        } else {
-          ctx.fillStyle = mainInkColor;
-          ctx.font = `bold ${Math.max(11, 13 * zoom)}px system-ui, sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.fillText(creature.name, 0, -32 * zoom);
+          // Energy Bar
+          const energyPct = Math.max(0, creature.energy / creature.maxEnergy);
+          const barW = 34 * currentZoom;
+          const barH = 4 * currentZoom;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+          ctx.fillRect(-barW / 2, -14 * currentZoom, barW, barH);
+          ctx.fillStyle = energyPct > 0.4 ? '#10b981' : '#f43f5e';
+          ctx.fillRect(-barW / 2, -14 * currentZoom, barW * energyPct, barH);
 
-          // Physics Badge readout
-          ctx.font = `${Math.max(9, 10 * zoom)}px monospace`;
-          ctx.fillStyle = '#10b981';
-          ctx.fillText(
-            `m:${f.totalMass} | v:${f.forwardSpeed.toFixed(2)} | ω:${f.netRotationDeg.toFixed(0)}°`,
-            0,
-            -20 * zoom
-          );
-        }
-
-        // Energy Bar
-        const energyPct = Math.max(0, creature.energy / creature.maxEnergy);
-        const barW = 34 * zoom;
-        const barH = 4 * zoom;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(-barW / 2, -14 * zoom, barW, barH);
-        ctx.fillStyle = energyPct > 0.4 ? '#10b981' : '#f43f5e';
-        ctx.fillRect(-barW / 2, -14 * zoom, barW * energyPct, barH);
-
-        ctx.restore();
+          ctx.restore();
         });
       });
 
       // Render Ghost Preview during Placement Mode
-      if (pendingPlacement && hoverGridPos) {
-        const centerPos = gridToScreen(hoverGridPos.x, hoverGridPos.y);
-        const baseHeadAngle = determineCreatureHeadAngle(pendingPlacement.elements);
-        const rotationDelta = pendingPlacement.angleDeg - baseHeadAngle;
+      const activeHoverGridPos = hoverGridPosRef.current;
+      if (currentPendingPlacement && activeHoverGridPos) {
+        const centerPos = {
+          x: currentOffset.x + activeHoverGridPos.x * scaledCell,
+          y: currentOffset.y + activeHoverGridPos.y * scaledCell,
+        };
+        const baseHeadAngle = determineCreatureHeadAngle(currentPendingPlacement.elements);
+        const rotationDelta = currentPendingPlacement.angleDeg - baseHeadAngle;
 
         ctx.save();
         ctx.translate(centerPos.x, centerPos.y);
 
-        // Glowing target ring around placement node
         const pulse = Math.sin(Date.now() / 150) * 4;
         ctx.beginPath();
-        ctx.arc(0, 0, (28 + pulse) * zoom, 0, Math.PI * 2);
+        ctx.arc(0, 0, (28 + pulse) * currentZoom, 0, Math.PI * 2);
         ctx.strokeStyle = '#6366f1';
-        ctx.lineWidth = 3 * zoom;
-        ctx.setLineDash([8 * zoom, 4 * zoom]);
+        ctx.lineWidth = 3 * currentZoom;
+        ctx.setLineDash([8 * currentZoom, 4 * currentZoom]);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Pulsing node center
         ctx.beginPath();
-        ctx.arc(0, 0, 8 * zoom, 0, Math.PI * 2);
+        ctx.arc(0, 0, 8 * currentZoom, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(99, 102, 241, 0.4)';
         ctx.fill();
 
-        // Rotate ghost creature
         ctx.rotate((rotationDelta * Math.PI) / 180);
         ctx.globalAlpha = 0.75;
 
-        pendingPlacement.elements.forEach((el) => {
+        currentPendingPlacement.elements.forEach((el) => {
           const elX = el.relX * scaledCell;
           const elY = el.relY * scaledCell;
 
@@ -977,40 +962,40 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
 
           if (el.type === 'head') {
             ctx.beginPath();
-            ctx.arc(0, 0, 11 * zoom, 0, Math.PI * 2);
+            ctx.arc(0, 0, 11 * currentZoom, 0, Math.PI * 2);
             ctx.fillStyle = '#fef08a';
             ctx.fill();
             ctx.strokeStyle = '#eab308';
-            ctx.lineWidth = 2.5 * zoom;
+            ctx.lineWidth = 2.5 * currentZoom;
             ctx.stroke();
             ctx.beginPath();
-            ctx.arc(0, 0, 4.5 * zoom, 0, Math.PI * 2);
+            ctx.arc(0, 0, 4.5 * currentZoom, 0, Math.PI * 2);
             ctx.fillStyle = '#0f172a';
             ctx.fill();
           } else if (el.type === 'joint') {
             ctx.beginPath();
-            ctx.arc(0, 0, 8 * zoom, 0, Math.PI * 2);
+            ctx.arc(0, 0, 8 * currentZoom, 0, Math.PI * 2);
             ctx.fillStyle = '#1e293b';
             ctx.fill();
             ctx.strokeStyle = '#38bdf8';
-            ctx.lineWidth = 2.5 * zoom;
+            ctx.lineWidth = 2.5 * currentZoom;
             ctx.stroke();
           } else if (el.type.startsWith('edge-')) {
             ctx.beginPath();
             ctx.moveTo(-scaledCell / 2, 0);
             ctx.lineTo(scaledCell / 2, 0);
-            ctx.strokeStyle = pendingPlacement.color || '#6366f1';
-            ctx.lineWidth = 3.5 * zoom;
+            ctx.strokeStyle = currentPendingPlacement.color || '#6366f1';
+            ctx.lineWidth = 3.5 * currentZoom;
             ctx.stroke();
           } else if (el.type.startsWith('muscle-')) {
             const isLeft = el.type.includes('left');
             const sign = isLeft ? -1 : 1;
             ctx.beginPath();
             ctx.moveTo(0, 0);
-            ctx.quadraticCurveTo(sign * 14 * zoom, 10 * zoom, sign * 20 * zoom, 0);
+            ctx.quadraticCurveTo(sign * 14 * currentZoom, 10 * currentZoom, sign * 20 * currentZoom, 0);
             ctx.strokeStyle = el.type.includes('random') ? (isLeft ? '#f97316' : '#d946ef') : (isLeft ? '#f43f5e' : '#a855f7');
-            ctx.lineWidth = 3 * zoom;
-            if (el.type.includes('random')) ctx.setLineDash([4 * zoom, 2 * zoom]);
+            ctx.lineWidth = 3 * currentZoom;
+            if (el.type.includes('random')) ctx.setLineDash([4 * currentZoom, 2 * currentZoom]);
             ctx.stroke();
             ctx.setLineDash([]);
           }
@@ -1020,13 +1005,12 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
 
         ctx.restore();
 
-        // Orientation direction arrow badge over ghost
         ctx.save();
         ctx.translate(centerPos.x, centerPos.y);
         ctx.fillStyle = '#6366f1';
-        ctx.font = `bold ${Math.max(10, 12 * zoom)}px sans-serif`;
+        ctx.font = `bold ${Math.max(10, 12 * currentZoom)}px sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(`Нажмите для размещения (${pendingPlacement.angleDeg}°)`, 0, -36 * zoom);
+        ctx.fillText(`Нажмите для размещения (${currentPendingPlacement.angleDeg}°)`, 0, -36 * currentZoom);
         ctx.restore();
       }
 
@@ -1036,18 +1020,7 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
     render();
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [
-    creatures,
-    foods,
-    offset,
-    zoom,
-    gridTheme,
-    showNodes,
-    selectedCreatureId,
-    pendingPlacement,
-    hoverGridPos,
-    gridToScreen,
-  ]);
+  }, [halfWorld, worldSize]);
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none bg-slate-950 cursor-crosshair">
@@ -1265,3 +1238,6 @@ export const GridCanvas: React.FC<GridCanvasProps> = ({
     </div>
   );
 };
+
+export const GridCanvas = React.memo(GridCanvasComponent);
+export default GridCanvas;
